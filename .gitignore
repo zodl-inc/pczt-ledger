@@ -1,0 +1,18 @@
+/target
+# The no_std embedding's lockfile is committed, like the crate's own: the job
+# that builds it gates with `--locked` (see `.github/workflows/checks.yml`).
+/ci/nostd/target
+.DS_Store
+/.plans/
+
+# Merge and rebase leftovers: a stale copy of signing-path code must never
+# be committed as if it were live.
+*.orig
+*.rej
+
+# Editor and OS droppings.
+*.swp
+*~
+.vscode/
+.idea/
+Thumbs.db

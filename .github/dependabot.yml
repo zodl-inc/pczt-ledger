@@ -1,0 +1,31 @@
+# Keeps the commit-pinned actions in `workflows/` and the Cargo dependencies
+# current. Each update arrives as a pull request that runs the full CI
+# matrix like any other change; nothing is merged automatically.
+#
+# A pull request that moves `pczt` is a wire-contract change, not a routine
+# bump: the crate is pinned exactly because it defines the byte stream the
+# firmware parses (see the comment on the dependency in Cargo.toml), and it
+# moves only as a deliberate, tested step under the AGENTS.md pin discipline.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # `/` covers `workflows/`; the composite action pins actions of its own.
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+  - package-ecosystem: cargo
+    # `ci/nostd` has its own lockfile, which may pin nothing the crate's does
+    # not (the `nostd` job in `workflows/checks.yml`), so a crate moves in both
+    # lockfiles in one pull request.
+    directories:
+      - /
+      - /ci/nostd
+    schedule:
+      interval: weekly
+    groups:
+      each-crate:
+        patterns:
+          - "*"
+        group-by: dependency-name
