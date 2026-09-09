@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Toolchain policy, following librustzcash: `rust-toolchain.toml` pins the
+# MSRV, and every job here runs on it unless it overrides the toolchain
+# explicitly. Tests, clippy, rustfmt and rustdoc therefore all gate on the
+# oldest compiler the crate supports. `build-latest` and `clippy-nodefault`
+# look ahead on current stable — the first with a fresh lockfile, to catch
+# dependency bitrot — and `clippy-beta` is an advisory run on beta.
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }}, MSRV)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: all-features
+            flags: --all-features
+          - name: no-default-features
+            flags: --no-default-features
+          - name: transport-hid
+            flags: --no-default-features --features transport-hid
+          - name: transport-speculos
+            flags: --no-default-features --features transport-speculos
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv
+      - run: cargo test ${{ matrix.flags }}
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
+  build-latest:
+    name: Latest build (stable, fresh lockfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+        id: toolchain
+      # A directory override outranks `rust-toolchain.toml`.
+      - run: rustup override set ${{ steps.toolchain.outputs.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: latest
+      - name: Remove lockfile to build with latest dependencies
+        run: rm Cargo.lock
+      - run: cargo build --all-targets --all-features
+      - name: Verify working directory is clean (excluding lockfile)
+        run: git diff --exit-code ':!Cargo.lock'
+
+  clippy:
+    name: Clippy (MSRV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv
+      - run: cargo clippy --all-features --all-targets -- -D warnings
+
+  clippy-nodefault:
+    name: Clippy (no default features, stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        id: toolchain
+        with:
+          components: clippy
+      - run: rustup override set ${{ steps.toolchain.outputs.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: latest
+      - run: cargo clippy --no-default-features -- -D warnings
+
+  clippy-beta:
+    name: Clippy (beta)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@beta
+        id: toolchain
+        with:
+          components: clippy
+      - run: rustup override set ${{ steps.toolchain.outputs.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: beta
+      - run: cargo clippy --all-features --all-targets -- -W clippy::all
+
+  fmt:
+    name: Rustfmt (MSRV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  doc:
+    name: Docs (MSRV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv
+      - run: cargo doc --no-deps --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings

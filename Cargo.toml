@@ -1,0 +1,116 @@
+[package]
+name = "pczt_ledger"
+version = "0.1.0"
+authors = [
+    "Kris Nuttycombe <kris@electriccoin.co>",
+    "John Boyd <john@coldnoise.net>",
+]
+edition = "2021"
+rust-version = "1.88"
+# Remove when the crate is ready for its first crates.io release.
+publish = false
+description = "Transport-agnostic APDU engine for signing Zcash PCZTs with Ledger hardware wallets"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/zodl-inc/pczt-ledger"
+documentation = "https://docs.rs/pczt_ledger"
+readme = "README.md"
+categories = ["cryptography::cryptocurrencies", "hardware-support"]
+keywords = ["zcash", "ledger", "pczt", "hardware-wallet", "apdu"]
+
+[dependencies]
+# PCZT roles. Not used by the APDU layer itself (which takes plain record
+# structs), but pinned here because the session layer lands on top of these
+# exact versions and the resolution must be locked now.
+#
+# Version pins mirror `LedgerHQ/ledger-zcash-utils` (main) so that host and
+# device-side host-utilities agree on the semantic types.
+#
+# Pinned exactly, for the reason `ledger-zcash-utils` gives for its own pin:
+# this crate defines the byte stream the firmware parses, so it moves only as
+# a deliberate, tested step — never as a side effect of `cargo update`.
+pczt = { version = "=0.9.3", default-features = false, features = [
+    "std",
+    "orchard",
+    "transparent",
+    "signer",
+] }
+zcash_protocol = "0.10"
+orchard = "0.15"
+# `transparent-inputs` is for `AccountPubKey::derive_address_pubkey`, which
+# `shape::ChangeInfo::derive` uses to turn a viewing key plus BIP 44
+# coordinates into the change pubkey the device verifies.
+zcash_transparent = { version = "0.10", features = ["transparent-inputs"] }
+zip32 = "0.2"
+secp256k1 = "0.29"
+
+# BLAKE2b-256 with a personalization string, for the device identity in
+# `pairing`. Already in this lockfile as an indirect dependency of `orchard`,
+# and the same hash family every Zcash personalized hash uses.
+blake2b_simd = "1"
+
+# `try_output_recovery_with_ovk`, the sender-side note recovery the device
+# runs on every shielded output to decide whether it is displayed. The host
+# runs the same trial, through the same crate `orchard` builds on, so the
+# displayed-output count reaches the device's own answer for a zero-valued
+# output; see `viewing::AccountViewingKeys::recovers_output`.
+zcash_note_encryption = "0.4"
+
+# `orchard::pczt::Spend::alpha` is a `pallas::Scalar`, whose canonical byte
+# encoding is `ff::PrimeField::to_repr`; the wire `Option<[u8; 32]>` has no
+# getter.
+ff = "0.13"
+
+# `common::Global` keeps `coin_type`, `fallback_lock_time` and `tx_modifiable`
+# `pub(crate)` with no getter, so they are read through the serde
+# representation. This is the same route `LedgerHQ/ledger-zcash-utils` takes in
+# `crates/zcash-crypto/src/parse.rs::parse_global`, and `Global` has no
+# non-string map keys, so a JSON round-trip is lossless.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HASH160 = RIPEMD160(SHA256(x)), for the transparent change-output check in
+# `shape`. Same primitives `zcash_transparent::util::hash160` uses.
+ripemd = "0.1"
+sha2 = "0.10"
+
+# Wipes, on drop, the records that carry per-action secrets (`alpha`, `rcv`,
+# `rseed`), the APDUs encoded from them, and viewing-key bytes under
+# reassembly. Best-effort, as zeroization always is: a move leaves its source
+# behind, and the copies a caller takes are the caller's to wipe.
+zeroize = { version = "1", features = ["derive"] }
+
+# Optional USB HID transport. See `src/transport/hid.rs`.
+hidapi = { version = "2.6", optional = true }
+
+[features]
+default = []
+## Enables the USB HID transport (`transport::hid`).
+transport-hid = ["dep:hidapi"]
+## Enables the speculos TCP transport (`transport::speculos`). Pure `std::net`,
+## so it pulls in no dependency of its own.
+transport-speculos = []
+
+[dev-dependencies]
+hex = "0.4"
+
+# Fixture PCZTs are built the way `librustzcash`'s own `pczt/tests/end_to_end.rs`
+# builds them: `Builder::build_for_pczt` → `Creator::build_from_parts` →
+# `IoFinalizer`, then the `SignerView::Full` redaction
+# `zcash_client_backend::data_api::wallet::redact_pczt_for_signer` applies
+# (clear spend witness + dummy spending key), reproduced with the `pczt`
+# Redactor role so the tests do not need `zcash_client_backend`.
+#
+# `io-finalizer` is additive with the library's own `pczt` features; enabling it
+# here also enables it for the `cargo test` build of the library, which is
+# harmless (the library never names the role).
+pczt = { version = "=0.9.3", default-features = false, features = [
+    "io-finalizer",
+    "zcp-builder",
+] }
+zcash_primitives = { version = "0.30", features = ["transparent-inputs"] }
+zcash_transparent = { version = "0.10", features = ["transparent-inputs"] }
+zcash_protocol = { version = "0.10", features = ["local-consensus"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Only for the "a Sapling bundle is refused" test, which needs a real Sapling
+# output rather than a hand-built one.
+sapling_crypto = { package = "sapling-crypto", version = "0.7" }
