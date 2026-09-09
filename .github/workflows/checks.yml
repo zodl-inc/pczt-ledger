@@ -1,0 +1,249 @@
+name: Checks
+
+# Every check the crate gates on, defined once. `ci.yml` calls this workflow
+# once per toolchain — the MSRV that `rust-toolchain.toml` pins, and current
+# stable — so a job added here runs on both without being written twice. The
+# toolchain itself is selected by `.github/actions/rust`, the first step of
+# every job.
+#
+# Every job builds the committed lockfile, with `--locked`, so a `Cargo.toml`
+# change without its `Cargo.lock` fails as "lockfile out of date" instead of
+# testing whatever resolves today; the fresh-lockfile build is `ci.yml`'s
+# `build-latest`. libudev is installed only on the legs that build `hidapi`,
+# and one leg per cache key writes the cache.
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        description: "`msrv` or `stable`, as `.github/actions/rust` takes it"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all-features
+            flags: --all-features
+            hidapi: true
+          - name: no-default-features
+            flags: --no-default-features
+            hidapi: false
+          - name: std
+            flags: --no-default-features --features std
+            hidapi: false
+          - name: transport-hid
+            flags: --no-default-features --features transport-hid
+            hidapi: true
+          - name: transport-speculos
+            flags: --no-default-features --features transport-speculos
+            hidapi: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install libudev (hidapi build dependency)
+        if: matrix.hidapi
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          save-cache: ${{ matrix.name == 'all-features' }}
+      - run: cargo test --locked ${{ matrix.flags }}
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
+  clippy:
+    name: Clippy (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # The same five feature sets as `test`, each with `--all-targets`: a lint
+    # that fires only when exactly one transport is on — an import or a
+    # helper used by one backend — is invisible to the `--all-features` and
+    # `--no-default-features` endpoints alone.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all-features
+            flags: --all-features
+            hidapi: true
+          - name: no-default-features
+            flags: --no-default-features
+            hidapi: false
+          - name: std
+            flags: --no-default-features --features std
+            hidapi: false
+          - name: transport-hid
+            flags: --no-default-features --features transport-hid
+            hidapi: true
+          - name: transport-speculos
+            flags: --no-default-features --features transport-speculos
+            hidapi: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install libudev (hidapi build dependency)
+        if: matrix.hidapi
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: ${{ inputs.toolchain }}
+      - run: cargo clippy --locked ${{ matrix.flags }} --all-targets -- -D warnings
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: ${{ inputs.toolchain }}
+      - run: cargo fmt --all -- --check
+
+  doc:
+    name: Docs (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # Every feature set a user can build: an intra-doc link into a
+    # feature-gated module resolves with every feature on and dangles with
+    # none, or with only the other transport, and docs.rs is not the place to
+    # find that out.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all-features
+            flags: --all-features
+            hidapi: true
+          - name: no-default-features
+            flags: --no-default-features
+            hidapi: false
+          - name: std
+            flags: --no-default-features --features std
+            hidapi: false
+          - name: transport-hid
+            flags: --no-default-features --features transport-hid
+            hidapi: true
+          - name: transport-speculos
+            flags: --no-default-features --features transport-speculos
+            hidapi: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install libudev (hidapi build dependency)
+        if: matrix.hidapi
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: ${{ inputs.toolchain }}
+      - run: cargo doc --locked --no-deps ${{ matrix.flags }} --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  nostd:
+    name: Build (no_std, thumbv7em-none-eabihf)
+    runs-on: ubuntu-latest
+    # The host build of `--no-default-features` cannot prove `no_std`: every
+    # dependency still finds a standard library there. Building the crate into
+    # a `#![no_std]` embedding for a target that has none can — `ci/nostd`.
+    # `secp256k1-sys` compiles C, so the target needs a cross compiler.
+    #
+    # `ci/nostd` is its own workspace, so that it resolves the way an embedder
+    # resolves rather than sharing the crate's dev-dependencies, and so it has
+    # a lockfile of its own. That lockfile is committed and built `--locked`,
+    # like every other job here. What keeps it auditable is the step below:
+    # `cargo deny` audits the crate's graph, not this one, so every crate
+    # pinned here must be pinned there at the same version. Regenerate it with
+    # `cp Cargo.lock ci/nostd/Cargo.lock`, then the build command below without
+    # `--locked`, and commit the result.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the arm-none-eabi C toolchain (secp256k1-sys cross-compiles C)
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: ${{ inputs.toolchain }}
+      - run: rustup target add thumbv7em-none-eabihf
+      # Deleted together with the `[patch.crates-io]` blocks in `Cargo.toml`
+      # and `ci/nostd/Cargo.toml`, once the changes they take from git reach a
+      # crates.io release. `[patch.crates-io]` does not displace a version the
+      # lockfile already pins, so a `cargo update` or a new dependency can
+      # leave a patched crate resolving from crates.io as well as from git,
+      # with two incompatible copies of its types in the graph and no warning.
+      # Until the blocks go, every crate a workspace's block names must appear
+      # in that workspace's lockfile exactly once, with its `git+` source.
+      - name: Verify every patched crate resolves only from its patch
+        run: |
+          set -eu
+          # The manifest is the first file, the lockfile the second.
+          guard() {
+            awk '
+              FNR == NR && /^\[patch\.crates-io\]/ { patch_block = 1; next }
+              FNR == NR && /^\[/                   { patch_block = 0 }
+              FNR == NR && patch_block && $2 == "=" && $1 ~ /^[A-Za-z0-9_-]+$/ {
+                patched[$1] = 1
+              }
+              FNR != NR && $1 == "name" { name = $3; gsub(/"/, "", name) }
+              FNR != NR && $1 == "source" && (name in patched) {
+                entries[name] += 1
+                if ($3 !~ /^"git\+/) from_registry[name] = 1
+              }
+              END {
+                for (name in patched) {
+                  if (entries[name] != 1) {
+                    printf "%s: %d entries in %s, expected exactly one\n", name, entries[name], FILENAME
+                    bad = 1
+                  } else if (name in from_registry) {
+                    printf "%s: resolved from the registry in %s, not from its patch\n", name, FILENAME
+                    bad = 1
+                  }
+                }
+                if (bad) {
+                  print "a patched crate must resolve from its patch alone; re-resolve the lockfile."
+                  exit 1
+                }
+              }
+            ' "$1/Cargo.toml" "$1/Cargo.lock"
+          }
+          guard .
+          guard ci/nostd
+
+      # A pin is a name, a version and a source, so a crate the embedding
+      # resolves from a second source is a pin the crate does not have.
+      - name: Verify the embedding pins nothing the crate does not
+        run: |
+          set -eu
+          pins() {
+            awk '
+              $0 == "[[package]]" { name = ""; version = "" }
+              /^name = / { name = $3 }
+              /^version = / { version = $3 }
+              /^source = / { print name " " version " " $3 }
+            ' "$1" | sort -u
+          }
+          extra=$(comm -23 <(pins ci/nostd/Cargo.lock) <(pins Cargo.lock))
+          if [ -n "$extra" ]; then
+            echo "ci/nostd/Cargo.lock pins crates Cargo.lock does not:"
+            echo "$extra"
+            echo "cargo deny audits the crate's graph, so the embedding may pin no more."
+            exit 1
+          fi
+      - run: cargo build --locked --target thumbv7em-none-eabihf
+        working-directory: ci/nostd
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/nostd
+      - name: Verify working directory is clean
+        run: git diff --exit-code
