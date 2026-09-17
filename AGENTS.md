@@ -255,10 +255,19 @@ cargo build --no-default-features
 cargo build --no-default-features --features std
 ```
 
-There are no emulator-backed tests yet. A test that needs a running speculos
-must read `SPECULOS_APDU_ADDR` (`transport::speculos::SPECULOS_ADDR_ENV`) and
-**skip cleanly** when it is unset. Hardware checks are documented, not
-automated: never write a test that cannot run in CI.
+`tests/speculos.rs` runs signing ceremonies against the app itself in the
+[Speculos] emulator: the firmware's parser, validation and review, not the
+end-to-end suite's model of them. Its module docs give the three commands
+that build the app at the pinned commit, launch the emulator, and run the
+tests. Those tests read `SPECULOS_APDU_ADDR`
+(`transport::speculos::SPECULOS_ADDR_ENV`) and **skip cleanly** when it is
+unset, which is what every emulator-backed test must do; the one test there
+that needs no emulator pins the host's key derivation to the UFVK Ledger's
+own suite records for the emulator's default seed, and runs in CI. Hardware
+checks are documented, not automated: never write a test that cannot run in
+CI.
+
+[Speculos]: https://github.com/LedgerHQ/speculos
 
 ## Lint & Format
 
