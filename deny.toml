@@ -1,0 +1,60 @@
+# Configuration for `cargo deny check`, run by `.github/workflows/audit.yml`
+# on every pull request and on a weekly schedule. The advisory database is
+# fetched at run time, so this gate can fail on a day nothing in the tree
+# changed: that is its purpose. The answer to an advisory is a dependency
+# bump; an `ignore` entry needs a reason and the advisory's URL next to it.
+
+[graph]
+# The transports are optional features, so `hidapi` and everything behind it
+# is only audited when the graph is resolved with all features on.
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Exactly the licences the current graph carries. A dependency under any
+# other licence fails this check so that it is reviewed, not discovered.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+# Duplicate versions are reported, not refused: the Zcash crates lag each
+# other's major bumps routinely, and a duplicate costs build size, not
+# safety. A wildcard version requirement is refused; every dependency of this
+# crate names the range it was tested against.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# crates.io only. A git or alternative-registry dependency is a change to
+# where the signing path's code comes from, and wants a review of its own.
+unknown-registry = "deny"
+unknown-git = "deny"
+# TODO: delete `allow-git`, together with the `[patch.crates-io]` block in
+# `Cargo.toml`, once both changes reach a crates.io release.
+#
+# That review, for the two repositories the `[patch.crates-io]` block takes
+# `pczt` and `orchard` from. Both are the upstream repositories, and both
+# carry the change this crate needs on `main` — zcash/librustzcash#3041 and
+# zcash/orchard#560, merged — but neither has released it. Listed by
+# repository URL and nothing wider: the revisions themselves are pinned in
+# `Cargo.toml` and in `Cargo.lock`, so this exemption admits two reviewed
+# repositories rather than git dependencies in general.
+allow-git = [
+    "https://github.com/zcash/librustzcash",
+    "https://github.com/zcash/orchard",
+]

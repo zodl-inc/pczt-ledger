@@ -1,0 +1,49 @@
+# A `#![no_std]` embedding of `pczt_ledger`, built for a target with no
+# standard library by the `nostd` job in `.github/workflows/checks.yml`. The
+# host build of `--no-default-features` cannot prove `no_std`: every
+# dependency still finds a standard library there.
+#
+# The lockfile next to this manifest is committed and built with `--locked`,
+# and every crate it pins is one the crate's own `Cargo.lock` pins at the same
+# version — which is what `cargo deny` audits. Regenerate it as the job's
+# comment describes, never by resolving freshly.
+#
+# The embedding is committed rather than written out by the job, for two
+# reasons. `src/lib.rs` beside this manifest carries the `getrandom` backend
+# the bare-metal target has none of, which is the part an embedder has to
+# supply and so the part worth reading. And a crate the job generates has no
+# lockfile to commit: it would resolve freshly on every run, where every other
+# job here builds `--locked`, and there would be nothing to hold against the
+# crate's own `Cargo.lock`.
+[package]
+name = "pczt_ledger_nostd_embedding"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own root: the crate above is not a workspace.
+[workspace]
+
+[dependencies]
+pczt_ledger = { path = "../..", default-features = false }
+# `pczt`'s Signer role depends on `getrandom`, which has no backend on a
+# bare-metal target: an embedding enables the `custom` feature and registers
+# one, as `src/lib.rs` here does.
+getrandom = { version = "0.2", features = ["custom"] }
+
+# TODO: delete this block, together with the one in the crate's own
+# `Cargo.toml`, once both changes reach a crates.io release.
+#
+# A `[patch.crates-io]` block applies only from the manifest of the workspace
+# being built, and this embedding is its own workspace, so the crate's block
+# does not reach here: without the same patches the embedding resolves the
+# unpatched `pczt` and `orchard` and fails to build the crate above it. The
+# revisions are the ones the crate names, which is also what keeps this
+# lockfile pinning nothing the crate's lockfile does not.
+[patch.crates-io]
+pczt = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_protocol = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_transparent = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_address = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_primitives = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+orchard = { git = "https://github.com/zcash/orchard", rev = "2929d3b7114b4eb3ae36f1d705531f124ac450ef" }

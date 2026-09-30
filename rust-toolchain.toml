@@ -1,0 +1,7 @@
+# The MSRV, and the toolchain every local `cargo` and every CI check runs on
+# unless it says otherwise (see `.github/workflows/ci.yml`). Bumping it is a
+# SemVer-breaking change: move it together with `rust-version` in Cargo.toml
+# and the README.
+[toolchain]
+channel = "1.88"
+components = ["clippy", "rustfmt"]

@@ -1,0 +1,49 @@
+name: Rust toolchain and cache
+description: >-
+  Puts a job on the toolchain it is asked for — the MSRV that
+  `rust-toolchain.toml` pins, or current stable — and restores the Cargo
+  cache for that toolchain. Every job in `workflows/checks.yml` starts with
+  this step, which is what lets one job definition run on both.
+
+inputs:
+  toolchain:
+    description: >-
+      `msrv` leaves `rust-toolchain.toml` in charge; `stable` installs current
+      stable and overrides the pin for the rest of the job.
+    required: true
+  cache-key:
+    description: The `shared-key` of the Cargo cache; the toolchain name when empty.
+    required: false
+    default: ""
+  save-cache:
+    description: Whether this job writes the cache for its key. One writer per key.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install current stable
+      if: inputs.toolchain == 'stable'
+      id: stable
+      uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master, 2026-09-03
+      with:
+        toolchain: stable
+        components: clippy, rustfmt
+    # A directory override outranks `rust-toolchain.toml`, which would
+    # otherwise put every `cargo` in the checkout back on the MSRV.
+    - name: Override rust-toolchain.toml with stable
+      if: inputs.toolchain == 'stable'
+      shell: bash
+      run: rustup override set "$TOOLCHAIN"
+      env:
+        TOOLCHAIN: ${{ steps.stable.outputs.name }}
+    # On the MSRV leg this is also what installs the pinned toolchain, before
+    # the cache step keys on its `rustc -vV`.
+    - name: Report the active toolchain
+      shell: bash
+      run: rustc --version --verbose && cargo --version
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: ${{ inputs.cache-key || inputs.toolchain }}
+        save-if: ${{ inputs.save-cache == 'true' }}

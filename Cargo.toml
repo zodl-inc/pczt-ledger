@@ -1,0 +1,119 @@
+[package]
+name = "pczt_ledger"
+version = "0.1.0"
+authors = [
+    "Kris Nuttycombe <kris@electriccoin.co>",
+    "John Boyd <john@coldnoise.net>",
+]
+edition = "2021"
+rust-version = "1.88"
+# Remove when the crate is ready for its first crates.io release.
+publish = false
+description = "Transport-agnostic APDU engine for signing Zcash PCZTs with Ledger hardware wallets"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/zodl-inc/pczt-ledger"
+readme = "README.md"
+categories = ["cryptography::cryptocurrencies", "hardware-support"]
+keywords = ["zcash", "ledger", "pczt", "hardware-wallet", "apdu"]
+
+[package.metadata.docs.rs]
+# `--cfg docsrs` lets rustdoc label each feature-gated item (see the
+# `doc_cfg` attribute in `src/lib.rs`).
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+# Pinned exactly: this crate defines the byte stream the firmware parses, so
+# `pczt` moves only as a deliberate, tested step — never as a side effect of
+# `cargo update`. The `[patch.crates-io]` block at the end of this file
+# temporarily overrides where these bytes come from: `pczt` and `orchard` are
+# taken from the revisions that add the accessors this crate would otherwise
+# reach around, at the same versions this section names.
+pczt = { version = "=0.9.3", default-features = false, features = [
+    "orchard",
+    "transparent",
+    "signer",
+] }
+zcash_protocol = { version = "0.10", default-features = false }
+# Without the proving stack: no `circuit` (halo2) or `multicore` (rayon).
+orchard = { version = "0.15", default-features = false }
+zcash_transparent = { version = "0.10", default-features = false, features = [
+    "transparent-inputs",
+] }
+zcash_address = { version = "0.13", default-features = false }
+zcash_encoding = { version = "0.4", default-features = false }
+zip32 = { version = "0.2", default-features = false }
+secp256k1 = { version = "0.29", default-features = false }
+subtle = { version = "2", default-features = false }
+blake2b_simd = { version = "1", default-features = false }
+ff = { version = "0.13", default-features = false }
+zeroize = { version = "1", default-features = false, features = ["alloc", "derive"] }
+hidapi = { version = "2.6", optional = true }
+
+[features]
+default = ["std"]
+## The standard library. Adds the `transport` module — the `Transport` trait
+## and its two optional implementations — and the blocking `ceremony` runner,
+## and lets the errors that wrap a dependency's error report it as their
+## `source`. Without it the crate is `#![no_std]` with `alloc`: the whole
+## signing path, none of the I/O.
+std = [
+    "pczt/std",
+    "zcash_protocol/std",
+    "orchard/std",
+    "zcash_transparent/std",
+    "zcash_address/std",
+    "zcash_encoding/std",
+    "zip32/std",
+    "secp256k1/std",
+    "subtle/std",
+    "blake2b_simd/std",
+    "ff/std",
+    "zeroize/std",
+]
+## Enables the USB HID transport (`transport::hid`). Implies `std`.
+transport-hid = ["std", "dep:hidapi"]
+## Enables the speculos TCP transport (`transport::speculos`). Implies `std`.
+## Pure `std::net`, so it pulls in no dependency of its own.
+transport-speculos = ["std"]
+
+[dev-dependencies]
+hex = "0.4"
+pczt = { version = "=0.9.3", default-features = false, features = [
+    "io-finalizer",
+    "spend-finalizer",
+    "tx-extractor",
+    "zcp-builder",
+] }
+zcash_primitives = { version = "0.30", features = ["transparent-inputs"] }
+zcash_transparent = { version = "0.10", features = ["transparent-inputs"] }
+zcash_protocol = { version = "0.10", features = ["local-consensus"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sapling_crypto = { package = "sapling-crypto", version = "0.7" }
+proptest = { version = "1", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# TODO: delete this block, together with `allow-git` in `deny.toml`, once both
+# changes reach a crates.io release; the version requirements above are then
+# satisfied from crates.io again and nothing else here changes.
+#
+# Two upstream changes add accessors this crate uses. zcash/librustzcash#3041
+# gives `pczt::common::Global` getters for `coin_type`, `fallback_lock_time`
+# and `tx_modifiable`. zcash/orchard#560 gives `orchard::pczt::Action` trial
+# decryption and output recovery that pair a bundle's value pool and protocol
+# version with its note encryption domain. Both are merged, so each crate
+# comes from its own upstream repository at the revision on `main` that
+# carries the change, until the next release of each.
+#
+# `pczt`'s intra-workspace dependencies are path dependencies, so every
+# librustzcash crate this crate shares with it is patched to the same revision:
+# patching `pczt` alone resolves two incompatible copies of `zcash_protocol` and
+# friends into the graph, and their types do not interconvert.
+[patch.crates-io]
+pczt = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_protocol = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_transparent = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_address = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+zcash_primitives = { git = "https://github.com/zcash/librustzcash", rev = "6192772887e1bcfd3fc4b7af2d945f8b6b267e60" }
+orchard = { git = "https://github.com/zcash/orchard", rev = "2929d3b7114b4eb3ae36f1d705531f124ac450ef" }
