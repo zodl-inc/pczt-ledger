@@ -778,7 +778,7 @@ dependencies = [
  "secp256k1",
  "subtle",
  "zcash_address",
- "zcash_encoding",
+ "zcash_encoding 0.5.0",
  "zcash_protocol",
  "zcash_transparent",
  "zeroize",
@@ -1285,7 +1285,7 @@ dependencies = [
  "bs58",
  "corez",
  "f4jumble",
- "zcash_encoding",
+ "zcash_encoding 0.4.0",
  "zcash_protocol",
 ]
 
@@ -1294,6 +1294,17 @@ name = "zcash_encoding"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1440921903cdb86133fb9e2fe800be488015db2939a30bedb413078a1acb0306"
+dependencies = [
+ "corez",
+ "hex",
+ "nonempty",
+]
+
+[[package]]
+name = "zcash_encoding"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2871fd3c37eaeb635c815a9c97495553bf8237a481b9f8b37eba661764bf937"
 dependencies = [
  "corez",
  "hex",
@@ -1334,7 +1345,7 @@ dependencies = [
  "redjubjub",
  "sapling-crypto",
  "sha2 0.10.9",
- "zcash_encoding",
+ "zcash_encoding 0.4.0",
  "zcash_note_encryption",
  "zcash_protocol",
  "zcash_script",
@@ -1348,7 +1359,7 @@ source = "git+https://github.com/zcash/librustzcash?rev=6192772887e1bcfd3fc4b7af
 dependencies = [
  "corez",
  "hex",
- "zcash_encoding",
+ "zcash_encoding 0.4.0",
 ]
 
 [[package]]
@@ -1393,7 +1404,7 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "zcash_address",
- "zcash_encoding",
+ "zcash_encoding 0.4.0",
  "zcash_protocol",
  "zcash_script",
  "zcash_spec",
