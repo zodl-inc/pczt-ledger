@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run per pull request at a time: a new push cancels the run for the
+# commit it replaced. Pushes to `main` are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Toolchain policy. `rust-toolchain.toml` pins the MSRV, following
+# librustzcash, so a plain `cargo` anywhere in the checkout runs on the oldest
+# compiler the crate supports. Every check — tests, clippy, rustfmt, rustdoc,
+# over every feature set — lives in `checks.yml` and runs twice: on that MSRV,
+# and on current stable, which `.github/actions/rust` selects by overriding
+# the pin for the job. The MSRV leg is the promise; the stable leg is the
+# early warning, since a new compiler brings new lints and a new rustdoc
+# brings new link checks. `build-latest` looks further ahead, building and
+# testing on stable with a fresh lockfile to catch dependency bitrot.
+#
+# Supply chain. Every action is pinned to a commit, with the tag the commit
+# was taken from in the comment, so a retargeted tag cannot reach a run here;
+# `.github/dependabot.yml` proposes the bumps. `persist-credentials: false`
+# keeps the checkout token out of `.git/config`, where a build script in the
+# dependency graph could read it. The advisory, licence and source checks live
+# in `audit.yml`, which also runs on a schedule.
+
+jobs:
+  checks:
+    name: ${{ matrix.toolchain }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [msrv, stable]
+    uses: ./.github/workflows/checks.yml
+    with:
+      toolchain: ${{ matrix.toolchain }}
+
+  build-latest:
+    name: Latest build and test (stable, fresh lockfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install libudev (hidapi build dependency)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: ./.github/actions/rust
+        with:
+          toolchain: stable
+          # Not `stable`: that key belongs to the committed lockfile.
+          cache-key: latest
+          save-cache: true
+      - name: Remove lockfile to build with latest dependencies
+        run: rm Cargo.lock
+      # The tests run here too: a dependency that still compiles but changed
+      # behaviour is bitrot of the kind this job exists to catch.
+      - run: cargo test --all-features
+      - name: Verify working directory is clean (excluding lockfile)
+        run: git diff --exit-code ':!Cargo.lock'
+
+  # The MSRV lives in three places that move together (AGENTS.md, "SemVer
+  # policy"). Cargo refuses to build when `rust-version` is above the
+  # toolchain, but nothing else notices the toolchain moving above
+  # `rust-version`, or the README drifting from either. No compiler is needed
+  # to check it.
+  msrv-declarations:
+    name: MSRV declarations agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify the MSRV agrees across Cargo.toml, rust-toolchain.toml and README.md
+        run: |
+          set -eu
+          manifest=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          readme=$(sed -n 's/^Rust \*\*\(.*\)\*\* or newer\.$/\1/p' README.md)
+          echo "Cargo.toml: '$manifest'  rust-toolchain.toml: '$toolchain'  README.md: '$readme'"
+          test -n "$manifest" && test "$manifest" = "$toolchain" && test "$manifest" = "$readme"
+
+  # The one status check branch protection needs to require. It fails if any
+  # blocking job above failed, was cancelled or was skipped, so adding a
+  # matrix leg cannot quietly add an unrequired check. `checks` is the whole
+  # reusable workflow on both toolchains.
+  required-checks:
+    name: Required checks
+    needs: [checks, build-latest, msrv-declarations]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm every required job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          test "$(echo "$RESULTS" | tr -d '[] \n"' | tr ',' '\n' | grep -vc '^success$')" = 0
