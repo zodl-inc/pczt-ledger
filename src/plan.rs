@@ -144,13 +144,15 @@ pub enum PlanError {
         /// The version group id.
         version_group_id: u32,
     },
-    /// `consensus_branch_id` is not a branch the pinned `zcash_protocol`
+    /// `consensus_branch_id` is not a branch this crate's `zcash_protocol`
     /// knows.
     ///
     /// The device refuses it at the header (`BranchId::try_from` in
     /// `parse_global`, `src/parser/pczt/common.rs` @ `22dc385`) and the `pczt`
-    /// extractor refuses it in the return path (`UnknownConsensusBranchId`);
-    /// the two accepted sets are identical at the current pins.
+    /// extractor refuses it in the return path (`UnknownConsensusBranchId`).
+    /// The device's set is smaller: every known app also refuses NU7, which
+    /// this crate's `zcash_protocol` knows; that refusal is
+    /// [`crate::limits::LimitViolation::BranchIdUnsupportedByDevice`].
     UnknownBranchId {
         /// The value in the PCZT.
         got: u32,
@@ -313,8 +315,8 @@ pub enum PlanError {
     },
     /// A real spend carries no `fvk`.
     ///
-    /// `Signer::apply_orchard_spend_auth_signature` (`pczt` 0.9.3) checks the
-    /// spend's nullifier against its note components before it stores the
+    /// `Signer::apply_orchard_spend_auth_signature` checks the spend's
+    /// nullifier against its note components before it stores the
     /// device's signature, and tolerates only the four `Missing*` errors a
     /// compact view leaves behind; a missing `fvk` is not among them. Nothing
     /// on the wire needs the field, so a PCZT without it streams, is reviewed
@@ -976,7 +978,7 @@ pub fn read_global(pczt: &Pczt) -> Result<GlobalFields, PlanError> {
 /// in the [`crate::apdu::encode::StreamPlan`] the device is sent; the memo
 /// retention budget and, on an app before v3.9.4, any memo the review would
 /// hash, for a plan built with viewing keys; a review with no output on it,
-/// likewise with keys; the device's
+/// likewise with keys; a consensus branch the app does not know; the device's
 /// change-output limit, whose
 /// shielded half is likewise counted from the PCZT and whose transparent half
 /// is read off the records; and the unmarked twin of a change output, which
@@ -989,6 +991,7 @@ pub fn read_global(pczt: &Pczt) -> Result<GlobalFields, PlanError> {
 /// [`LimitViolation::MemoRetentionBudgetExceeded`],
 /// [`LimitViolation::HashedMemoUnsupported`],
 /// [`LimitViolation::NoReviewableOutputs`],
+/// [`LimitViolation::BranchIdUnsupportedByDevice`],
 /// [`LimitViolation::TooManyChangeOutputs`] and
 /// [`LimitViolation::UnmarkedChangeOutput`].
 pub fn validate_plan(plan: &Plan, bounds: &DeviceBounds) -> Result<(), Vec<LimitViolation>> {
@@ -1076,6 +1079,14 @@ pub fn validate_plan(plan: &Plan, bounds: &DeviceBounds) -> Result<(), Vec<Limit
         out.push(LimitViolation::TooManyChangeOutputs { got, max, shielded });
     }
 
+    // A branch this crate knows and the connected app does not; see
+    // `DeviceBounds::nu7_branch`.
+    if !device_knows_branch(plan.global.consensus_branch_id, bounds) {
+        out.push(LimitViolation::BranchIdUnsupportedByDevice {
+            got: u32::from(plan.global.consensus_branch_id),
+        });
+    }
+
     // The same per-output rule means an unmarked output paying the change
     // address is shown as a payment to a third party; see
     // `LimitViolation::UnmarkedChangeOutput`.
@@ -1099,9 +1110,31 @@ pub fn validate_plan(plan: &Plan, bounds: &DeviceBounds) -> Result<(), Vec<Limit
     }
 }
 
-/// Checks `consensus_branch_id` the way `Pczt::extract_tx_data` (`pczt`
-/// 0.9.3) checks it in the return path, so that a PCZT the extractor would
-/// refuse after the ceremony is refused before the first APDU.
+/// Whether the connected app's header parser accepts `branch`.
+///
+/// Spelled out per branch, without a catch-all, so that a branch a newer
+/// `zcash_protocol` adds is a compile error here until someone decides
+/// whether the app knows it.
+const fn device_knows_branch(branch: BranchId, bounds: &DeviceBounds) -> bool {
+    match branch {
+        BranchId::Sprout
+        | BranchId::Overwinter
+        | BranchId::Sapling
+        | BranchId::Blossom
+        | BranchId::Heartwood
+        | BranchId::Canopy
+        | BranchId::Nu5
+        | BranchId::Nu6
+        | BranchId::Nu6_1
+        | BranchId::Nu6_2
+        | BranchId::Nu6_3 => true,
+        BranchId::Nu7 => bounds.nu7_branch,
+    }
+}
+
+/// Checks `consensus_branch_id` the way `Pczt::extract_tx_data` checks it in
+/// the return path, so that a PCZT the extractor would refuse after the
+/// ceremony is refused before the first APDU.
 ///
 /// The extractor's rules, in its order: the id must be a known branch
 /// ([`PlanError::UnknownBranchId`], applied by [`read_global`]); that branch
@@ -1810,7 +1843,7 @@ fn convert_bundle(
             zip32_derivation,
             cmx: output.cmx().to_bytes(),
             ephemeral_key: note.epk_bytes,
-            enc_ciphertext: note.enc_ciphertext,
+            enc_ciphertext: note.enc_ciphertext.0,
             out_ciphertext: note.out_ciphertext,
             recipient,
             value,

@@ -281,6 +281,13 @@ fn the_fallback_bounds_bracket_every_real_set() {
         strictest.hashed_memo_review(),
         real.iter().all(DeviceBounds::hashed_memo_review)
     );
+    // Likewise a branch: NU7 is known to no real app, so to neither set.
+    assert_eq!(most.nu7_branch(), real.iter().any(DeviceBounds::nu7_branch));
+    assert_eq!(
+        strictest.nu7_branch(),
+        real.iter().all(DeviceBounds::nu7_branch)
+    );
+    assert!(!most.nu7_branch());
 
     for bounds in [most, strictest].iter().chain(real.iter()) {
         assert_eq!(

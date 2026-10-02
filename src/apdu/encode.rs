@@ -143,13 +143,18 @@ pub const MAX_PATH_COMPONENTS: usize = 10;
 /// PCZT parser reads every count and byte length with (`CompactSize::read_t`),
 /// and this writes it with that crate rather than mirroring it.
 ///
-/// Infallible: `CompactSize::write` reports only what its writer reports, and
-/// writing to a `Vec<u8>` appends and cannot fail.
+/// Infallible: `CompactSize::write_unbounded` reports only what its writer
+/// reports, and writing to a `Vec<u8>` appends and cannot fail. It is the
+/// unbounded variant deliberately: `CompactSize::write` refuses a value above
+/// `MAX_COMPACT_SIZE` (32 MiB) by returning an error and writing nothing,
+/// which here would leave a gap in the stream rather than a value. Every count
+/// and length this crate writes is far below that bound, and a larger one is
+/// still refused by the device's reader, which enforces it.
 pub fn write_compact_size(out: &mut Vec<u8>, n: usize) {
-    // `write` returns the writer's result; a `Vec<u8>` never returns an error
-    // and never stops short, so there is nothing to propagate and nothing is
-    // left half-written.
-    let _ = CompactSize::write(out, n);
+    // `write_unbounded` returns the writer's result; a `Vec<u8>` never returns
+    // an error and never stops short, so there is nothing to propagate and
+    // nothing is left half-written.
+    let _ = CompactSize::write_unbounded(out, n as u64);
 }
 
 /// Appends an `Option<u32>` as the device's 1-byte tag plus optional LE value.

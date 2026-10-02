@@ -7,4 +7,6 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.1.0-pre.0] - 2026-10-02
+
 Initial release.

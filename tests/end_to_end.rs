@@ -63,7 +63,6 @@ use pczt::{
     },
     Pczt,
 };
-use rand_core::OsRng;
 use zcash_address::unified::Encoding;
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder, BundlePadding, PcztResult},
@@ -133,6 +132,7 @@ fn v5_network() -> LocalNetwork {
         nu6_1: Some(BlockHeight::from_u32(8)),
         nu6_2: Some(BlockHeight::from_u32(9)),
         nu6_3: None,
+        nu7: None,
     }
 }
 
@@ -169,8 +169,8 @@ const PROBE_EXCHANGES: usize = 2;
 /// The key the scripted device answers the identity probe with. Any curve
 /// point does; it is fixed so the paired identity can be computed up front.
 fn fake_device_key() -> secp256k1::PublicKey {
-    let sk = secp256k1::SecretKey::from_slice(&[0x5Du8; 32]).expect("a valid secret key");
-    secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::signing_only(), &sk)
+    let sk = secp256k1::SecretKey::from_secret_bytes([0x5Du8; 32]).expect("a valid secret key");
+    secp256k1::PublicKey::from_secret_key(&sk)
 }
 
 /// The identity the fixtures are paired with: the scripted device's.
@@ -352,7 +352,6 @@ struct TransparentKeys {
 fn transparent_keys(params: &LocalNetwork) -> TransparentKeys {
     let account_sk = AccountPrivKey::from_seed(params, &SEED, zip32::AccountId::ZERO)
         .expect("account key derives");
-    let secp = secp256k1::Secp256k1::signing_only();
 
     let (_, external_index) = account_sk
         .to_account_pubkey()
@@ -362,7 +361,7 @@ fn transparent_keys(params: &LocalNetwork) -> TransparentKeys {
     let sk = account_sk
         .derive_external_secret_key(external_index)
         .expect("external sk");
-    let pubkey = sk.public_key(&secp);
+    let pubkey = sk.public_key();
 
     let (_, internal_index) = account_sk
         .to_account_pubkey()
@@ -372,7 +371,7 @@ fn transparent_keys(params: &LocalNetwork) -> TransparentKeys {
     let change_sk = account_sk
         .derive_internal_secret_key(internal_index)
         .expect("internal sk");
-    let change_pubkey = change_sk.public_key(&secp);
+    let change_pubkey = change_sk.public_key();
 
     TransparentKeys {
         sk,
@@ -437,7 +436,9 @@ fn stamp_transparent_input_derivations(pczt: Pczt, pubkey: [u8; 33]) -> Pczt {
 /// Wraps builder parts into a redacted, input-stamped PCZT.
 fn finish_fixture(pczt_parts: PcztResult<LocalNetwork>, pubkey: Option<[u8; 33]>) -> Vec<u8> {
     let pczt = Creator::build_from_parts(pczt_parts.pczt_parts).expect("creator");
-    let pczt = IoFinalizer::new(pczt).finalize_io().expect("io finalizer");
+    let pczt = IoFinalizer::new(pczt)
+        .finalize_io(rand::rng())
+        .expect("io finalizer");
     let pczt = match pubkey {
         Some(pubkey) => stamp_transparent_input_derivations(pczt, pubkey),
         None => pczt,
@@ -507,7 +508,7 @@ fn fixture_v5_transparent_to_orchard_stamped(stamp_pubkey: [u8; 33]) -> Fixture 
         .expect("orchard change");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -568,7 +569,7 @@ fn fixture_v5_transparent_only_with(stamp_pubkey: Option<[u8; 33]>) -> Fixture {
         .expect("transparent output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -620,7 +621,7 @@ fn fixture_v5_two_transparent_inputs() -> Fixture {
         .expect("transparent output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -685,7 +686,7 @@ fn orchard_spend_parts() -> PcztResult<LocalNetwork> {
         .expect("transparent change output");
 
     builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt")
 }
 
@@ -720,7 +721,7 @@ fn fixture_v5_orchard_spend_to_transparent() -> Fixture {
         .expect("transparent output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -753,7 +754,7 @@ fn fixture_v5_orchard_spend_two_transparent_change() -> Fixture {
     let second_pubkey = account_sk
         .derive_internal_secret_key(second_index)
         .expect("internal sk")
-        .public_key(&secp256k1::Secp256k1::signing_only());
+        .public_key();
     let second_address = TransparentAddress::from_pubkey(&second_pubkey);
 
     let (note, merkle_path, anchor) = synthetic_note(&fvk, 1_000_000, NoteVersion::V2);
@@ -790,7 +791,7 @@ fn fixture_v5_orchard_spend_two_transparent_change() -> Fixture {
         .expect("second transparent output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
     let bytes = finish_fixture(parts, None);
 
@@ -868,7 +869,7 @@ fn fixture_v5_orchard_spend_change_paid_twice() -> Fixture {
         .expect("second output to the change address");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -921,7 +922,7 @@ fn fixture_v6_ironwood() -> Fixture {
         .expect("ironwood output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -983,7 +984,7 @@ fn fixture_v6_ironwood_with_change() -> Fixture {
         .expect("ironwood change");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1062,7 +1063,7 @@ fn v6_ironwood_spend_fixture(orchard_pad_to: Option<u8>) -> Fixture {
         .expect("ironwood change");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1214,7 +1215,7 @@ fn seed_orchard_change_fixture(change_notes: u32, transparent_change: Option<u64
     }
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1300,7 +1301,7 @@ fn fixture_v5_four_recipients_plus_zero_valued(
         .expect("zero-valued orchard output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1355,7 +1356,7 @@ fn orchard_output_fixture(recipients: u32, pad_to: Option<u8>, each: u64) -> Fix
     }
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1408,7 +1409,7 @@ fn orchard_output_fixture_with_memos(memos: Vec<MemoBytes>, each: u64) -> Fixtur
     }
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1458,7 +1459,7 @@ fn fixture_v5_orchard_output_without_ovk() -> Fixture {
         .expect("orchard output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -1508,7 +1509,7 @@ fn fixture_v5_two_dummy_outputs() -> Fixture {
         .expect("transparent output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
 
     Fixture {
@@ -2554,7 +2555,7 @@ fn canned_signatures(
     for &index in plan.orchard_real_spends() {
         let mut signer = Signer::new(shaped.clone()).expect("signer");
         signer
-            .sign_orchard(index, &fixture.orchard_ask)
+            .sign_orchard(rand::rng(), index, &fixture.orchard_ask)
             .expect("host-side orchard signature");
         let signed = signer.finish();
         device
@@ -2564,7 +2565,7 @@ fn canned_signatures(
     for &index in plan.ironwood_real_spends() {
         let mut signer = Signer::new(shaped.clone()).expect("signer");
         signer
-            .sign_ironwood(index, &fixture.orchard_ask)
+            .sign_ironwood(rand::rng(), index, &fixture.orchard_ask)
             .expect("host-side ironwood signature");
         let signed = signer.finish();
         device
@@ -2574,10 +2575,9 @@ fn canned_signatures(
 
     if let Some(sk) = &fixture.transparent_sk {
         let signer = Signer::new(shaped.clone()).expect("signer");
-        let secp = secp256k1::Secp256k1::signing_only();
         for index in 0..plan.stream().transparent_inputs().len() {
             let sighash = signer.transparent_sighash(index).expect("sighash");
-            let sig = secp.sign_ecdsa(&secp256k1::Message::from_digest(sighash), sk);
+            let sig = secp256k1::ecdsa::sign(secp256k1::Message::from_digest(sighash), sk);
             let mut der = sig.serialize_der().to_vec();
             if ledger_quirks {
                 // The device ORs the y-parity bit into the DER SEQUENCE tag
@@ -3257,6 +3257,43 @@ fn a_branch_id_the_extractor_refuses_is_refused_before_the_first_apdu() {
         PlanError::UnknownBranchId { got: unknown },
     );
 
+    // NU7: a branch this crate's `zcash_protocol` knows and the extractor
+    // accepts for a v6 transaction, but no known app's header parser does
+    // (`zcash_protocol` 0.10.4 without `zcash_unstable = "nu7"`). The plan
+    // builds; validation against the device's bounds refuses it, before any
+    // APDU is queued.
+    let nu7 = u32::from(BranchId::Nu7);
+    assert_eq!(nu7, 0x7719_0AD9);
+    let v6 = fixture_v6_ironwood();
+    let retagged = patch_branch_id(v6.bytes.clone(), nu7);
+    let pczt = Pczt::parse(&retagged).expect("parses");
+    let plan = build_plan(&pczt).expect("the extractor's branch check accepts NU7 for v6");
+    for bounds in [
+        DeviceBounds::V3_9_2,
+        DeviceBounds::V3_9_3,
+        DeviceBounds::V3_9_4,
+        DeviceBounds::MOST_PERMISSIVE,
+    ] {
+        let violations = validate_plan(&plan, &bounds).expect_err("no app knows NU7");
+        assert!(
+            violations.contains(&LimitViolation::BranchIdUnsupportedByDevice { got: nu7 }),
+            "{violations:?}"
+        );
+    }
+    let err = LedgerSignSession::new(&retagged, caps(), v6.params(None))
+        .expect_err("the session refuses it before any APDU is queued");
+    assert!(
+        matches!(
+            &err,
+            SessionError::Validation(v) if v.iter().any(|x| matches!(
+                x,
+                LedgerViolation::Limit(LimitViolation::BranchIdUnsupportedByDevice { got })
+                    if *got == nu7
+            ))
+        ),
+        "unexpected error: {err}"
+    );
+
     // A v5 transaction under NU6.3 is one the extractor accepts at the branch
     // check. What refuses this one is the Orchard pool's post-NU6.3 rule,
     // which the retag brings with it: the bundle becomes `orchard_v3`, and
@@ -3280,7 +3317,8 @@ fn validate_rejects_sapling_content() {
     let params = v5_network();
     let t = transparent_keys(&params);
 
-    let extsk = sapling_crypto::zip32::ExtendedSpendingKey::master(&SEED);
+    let extsk =
+        sapling_crypto::zip32::ExtendedSpendingKey::master(&SEED).expect("master key derives");
     let (_, sapling_addr) = extsk.default_address();
 
     let mut builder = Builder::new(
@@ -3314,7 +3352,7 @@ fn validate_rejects_sapling_content() {
         .expect("sapling output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
     let bytes = finish_fixture(parts, Some(t.pubkey.serialize()));
     let pczt = Pczt::parse(&bytes).expect("parses");
@@ -4473,7 +4511,7 @@ fn validate_rejects_a_non_standard_transparent_output() {
         .expect("orchard output");
 
     let parts = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(rand::rng(), &zip317::FeeRule::standard())
         .expect("build_for_pczt");
     let bytes = finish_fixture(parts, Some(t.pubkey.serialize()));
     let pczt = Pczt::parse(&bytes).expect("parses");
@@ -4768,7 +4806,7 @@ fn a_signed_pczt_finalizes_and_extracts_to_a_transaction() {
         .finalize_spends()
         .expect("the Spend Finalizer assembles the script_sig");
     let tx = pczt::roles::tx_extractor::TransactionExtractor::new(finalized)
-        .extract()
+        .extract(rand::rng())
         .expect("the signed PCZT extracts to a transaction");
 
     // `<push> <sig ‖ sighash_type> <push 33> <pubkey>`.
@@ -6165,9 +6203,8 @@ fn a_different_device_is_refused_before_the_first_pczt_apdu() {
     let mut device = FakeDevice::new();
     canned_signatures(&fixture, &session.shaped_pczt().clone(), &mut device, false);
     // A second Ledger, restored from a different seed.
-    let other_sk = secp256k1::SecretKey::from_slice(&[0x6Eu8; 32]).expect("valid");
-    device.identity_key =
-        secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::signing_only(), &other_sk);
+    let other_sk = secp256k1::SecretKey::from_secret_bytes([0x6Eu8; 32]).expect("valid");
+    device.identity_key = secp256k1::PublicKey::from_secret_key(&other_sk);
     let other = pairing::DeviceIdentity::from_compressed_pubkey(&device.identity_key.serialize());
     assert_ne!(other, fake_device_identity());
 
@@ -6545,9 +6582,8 @@ fn the_runner_is_idempotent_once_the_session_is_complete() {
 /// sighash byte.
 #[test]
 fn der_normalization_undoes_the_device_quirks() {
-    let secp = secp256k1::Secp256k1::new();
-    let sk = secp256k1::SecretKey::from_slice(&[9u8; 32]).expect("key");
-    let sig = secp.sign_ecdsa(&secp256k1::Message::from_digest([3u8; 32]), &sk);
+    let sk = secp256k1::SecretKey::from_secret_bytes([9u8; 32]).expect("key");
+    let sig = secp256k1::ecdsa::sign(secp256k1::Message::from_digest([3u8; 32]), &sk);
     let canonical = sig.serialize_der().to_vec();
 
     // With only the trailing sighash byte: the form the device sends for an
@@ -6569,9 +6605,9 @@ fn der_normalization_undoes_the_device_quirks() {
     let s = secp256k1::Scalar::from_be_bytes(s_bytes).expect("a scalar");
     let order_minus_s = {
         // n - s, computed with the negation `SecretKey` exposes.
-        let mut as_key = secp256k1::SecretKey::from_slice(&s_bytes).expect("s is a key");
+        let mut as_key = secp256k1::SecretKey::from_secret_bytes(s_bytes).expect("s is a key");
         as_key = as_key.negate();
-        as_key.secret_bytes()
+        as_key.to_secret_bytes()
     };
     let _ = s;
     compact[32..].copy_from_slice(&order_minus_s);
@@ -6731,7 +6767,7 @@ fn a_signature_for_the_wrong_action_is_rejected() {
 
     let mut signer = Signer::new(shaped.pczt().clone()).expect("signer");
     signer
-        .sign_orchard(real, &fixture.orchard_ask)
+        .sign_orchard(rand::rng(), real, &fixture.orchard_ask)
         .expect("sign");
     let sig = orchard_sig(&signer.finish(), real, false);
 
@@ -7420,7 +7456,7 @@ fn a_pre_signed_real_spend_is_refused_as_a_classification_mismatch() {
 
     let mut signer = Signer::new(pczt).expect("signer");
     signer
-        .sign_orchard(real, &fixture.orchard_ask)
+        .sign_orchard(rand::rng(), real, &fixture.orchard_ask)
         .expect("host-side signature");
     let signed = signer.finish();
     assert_eq!(

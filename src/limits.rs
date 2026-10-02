@@ -164,6 +164,17 @@ pub struct DeviceBounds {
     /// reports, and splits into no more notes than it allows. See
     /// [`LimitViolation::TooManyChangeOutputs`] for the check.
     pub(crate) change_outputs: usize,
+    /// Whether the app accepts the NU7 consensus branch id (`0x77190AD9`).
+    ///
+    /// No known version does. Every supported app links `zcash_protocol`
+    /// 0.10.4 (`Cargo.lock` at `0e048bb`, `22dc385` and `1a0f649`), where
+    /// `BranchId::Nu7` exists only under `cfg(zcash_unstable = "nu7")`, which
+    /// the app's build does not set, so `parse_global`'s `BranchId::try_from`
+    /// refuses the id at the header. This crate's `zcash_protocol` 0.11
+    /// accepts it unconditionally, so without this the refusal would come from
+    /// the device instead of before the first APDU. See
+    /// [`LimitViolation::BranchIdUnsupportedByDevice`].
+    pub(crate) nu7_branch: bool,
 }
 
 impl DeviceBounds {
@@ -212,6 +223,12 @@ impl DeviceBounds {
         self.change_outputs
     }
 
+    /// Whether the app accepts the NU7 consensus branch id; `false` on every
+    /// known version. See [`LimitViolation::BranchIdUnsupportedByDevice`].
+    pub const fn nu7_branch(&self) -> bool {
+        self.nu7_branch
+    }
+
     /// v3.6.0 through v3.9.2: ten of everything (`src/consts.rs` @
     /// `0e048bb`, all four "due to device memory constraints"), and the two
     /// review budgets the app itself does not have.
@@ -233,6 +250,7 @@ impl DeviceBounds {
         retained_memo_bytes: MAX_RETAINED_MEMO_BYTES,
         hashed_memo_review: false,
         change_outputs: MAX_CHANGE_OUTPUTS,
+        nu7_branch: false,
     };
 
     /// v3.9.3.
@@ -255,6 +273,7 @@ impl DeviceBounds {
         retained_memo_bytes: MAX_RETAINED_MEMO_BYTES,
         hashed_memo_review: false,
         change_outputs: MAX_CHANGE_OUTPUTS,
+        nu7_branch: false,
     };
 
     /// v3.9.4, the firmware pin.
@@ -273,6 +292,7 @@ impl DeviceBounds {
         retained_memo_bytes: MAX_RETAINED_MEMO_BYTES,
         hashed_memo_review: true,
         change_outputs: MAX_CHANGE_OUTPUTS,
+        nu7_branch: false,
     };
 
     /// The strictest set any supported app is held to.
@@ -301,6 +321,7 @@ impl DeviceBounds {
         retained_memo_bytes: MAX_RETAINED_MEMO_BYTES,
         hashed_memo_review: false,
         change_outputs: MAX_CHANGE_OUTPUTS,
+        nu7_branch: false,
     };
 
     /// The most permissive set any supported app is held to.
@@ -326,6 +347,7 @@ impl DeviceBounds {
         retained_memo_bytes: MAX_RETAINED_MEMO_BYTES,
         hashed_memo_review: true,
         change_outputs: MAX_CHANGE_OUTPUTS,
+        nu7_branch: false,
     };
 
     /// The bounds a reported app version enforces, or `None` for a version
@@ -798,6 +820,15 @@ pub enum LimitViolation {
         /// Index of the action whose memo would be hashed.
         index: usize,
     },
+    /// `consensus_branch_id` is a branch this crate knows and the connected
+    /// app does not: NU7 (`0x77190AD9`), on every known version. The app
+    /// refuses it at the header APDU (`BranchId::try_from` in `parse_global`,
+    /// `src/parser/pczt/common.rs`), so nothing would be signed; this pulls
+    /// the refusal before the first APDU. See [`DeviceBounds::nu7_branch`].
+    BranchIdUnsupportedByDevice {
+        /// The value in the PCZT.
+        got: u32,
+    },
     /// The transaction carries more change outputs than the connected app
     /// accepts, [`DeviceBounds::change_outputs`], which it refuses mid-stream
     /// with `"Multiple change outputs detected"` at the first one past the
@@ -1093,6 +1124,11 @@ impl core::fmt::Display for LimitViolation {
                  v3.9.4 compute that hash with an uninitialized context, so the review would not \
                  show the memo's digest. Update the Ledger Zcash app to v3.9.4 or later, or send \
                  the memo as printable ASCII"
+            ),
+            LimitViolation::BranchIdUnsupportedByDevice { got } => write!(
+                f,
+                "consensus branch id {got:#010x} is not one the connected Ledger Zcash app \
+                 accepts; it refuses the transaction at the header"
             ),
             LimitViolation::UnmarkedChangeOutput { change, index } => write!(
                 f,

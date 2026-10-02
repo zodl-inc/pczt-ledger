@@ -91,11 +91,9 @@
 //! parsers and `apply` — and only the I/O is not: the `transport` module,
 //! whose error carries a `std::io::ErrorKind`, and the blocking `ceremony`
 //! runner, which sleeps between `0x6901` resends. `transport-hid` and
-//! `transport-speculos` imply `std`. An embedding on a target with no
-//! `getrandom` backend enables `getrandom`'s `custom` feature and registers
-//! one (`getrandom::register_custom_getrandom!`), since `pczt`'s Signer role
-//! depends on the crate; `ci/nostd` is such an embedding, and CI builds it
-//! for `thumbv7em-none-eabihf`.
+//! `transport-speculos` imply `std`. No `getrandom` backend is needed: nothing
+//! in the `no_std` graph depends on `getrandom`. CI builds this half for
+//! `thumbv7em-none-eabihf`, a target with no standard library.
 //!
 //! # Shape of one ceremony
 //!

@@ -191,6 +191,6 @@ pub(crate) fn arb_bytes(max: usize) -> impl Strategy<Value = Vec<u8>> {
 
 pub(crate) fn arb_secret_key() -> impl Strategy<Value = secp256k1::SecretKey> {
     any::<[u8; 32]>().prop_filter_map("not a secp256k1 scalar", |bytes| {
-        secp256k1::SecretKey::from_slice(&bytes).ok()
+        secp256k1::SecretKey::from_secret_bytes(bytes).ok()
     })
 }

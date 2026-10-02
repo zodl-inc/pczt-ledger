@@ -44,17 +44,3 @@ wildcards = "deny"
 # where the signing path's code comes from, and wants a review of its own.
 unknown-registry = "deny"
 unknown-git = "deny"
-# TODO: delete `allow-git`, together with the `[patch.crates-io]` block in
-# `Cargo.toml`, once the changes that block names reach a crates.io release.
-#
-# That review, for the two repositories the `[patch.crates-io]` block takes
-# `pczt` and `orchard` from. Both are the upstream repositories, and both
-# carry the change this crate needs on `main` — zcash/librustzcash#3041 and
-# zcash/orchard#560, merged — but neither has released it. Listed by
-# repository URL and nothing wider: the revisions themselves are pinned in
-# `Cargo.toml` and in `Cargo.lock`, so this exemption admits two reviewed
-# repositories rather than git dependencies in general.
-allow-git = [
-    "https://github.com/zcash/librustzcash",
-    "https://github.com/zcash/orchard",
-]

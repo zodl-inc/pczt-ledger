@@ -94,8 +94,7 @@ prop_compose! {
     /// A signature the way the device produces one: deterministic ECDSA over
     /// a digest, low-S.
     fn arb_signature()(sk in arb_secret_key(), digest in any::<[u8; 32]>()) -> secp256k1::ecdsa::Signature {
-        let secp = secp256k1::Secp256k1::signing_only();
-        secp.sign_ecdsa(&secp256k1::Message::from_digest(digest), &sk)
+        secp256k1::ecdsa::sign(secp256k1::Message::from_digest(digest), &sk)
     }
 }
 

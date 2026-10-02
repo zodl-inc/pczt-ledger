@@ -390,8 +390,7 @@ prop_compose! {
         addr in prop::collection::vec(0x21u8..0x7f, 0..=60),
         chain_code in any::<[u8; CHAIN_CODE_LEN]>(),
     ) -> (Vec<u8>, [u8; WALLET_PUBLIC_KEY_LEN], [u8; CHAIN_CODE_LEN]) {
-        let secp = secp256k1::Secp256k1::signing_only();
-        let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk).serialize_uncompressed();
+        let pk = secp256k1::PublicKey::from_secret_key(&sk).serialize_uncompressed();
         let mut reply = vec![WALLET_PUBLIC_KEY_LEN as u8];
         reply.extend_from_slice(&pk);
         reply.push(addr.len() as u8);
