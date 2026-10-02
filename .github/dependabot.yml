@@ -16,12 +16,8 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: cargo
-    # `ci/nostd` has its own lockfile, which may pin nothing the crate's does
-    # not (the `nostd` job in `workflows/checks.yml`), so a crate moves in both
-    # lockfiles in one pull request.
     directories:
       - /
-      - /ci/nostd
     schedule:
       interval: weekly
     groups:

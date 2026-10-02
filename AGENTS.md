@@ -123,13 +123,14 @@ deliberate, reviewed step — never a side effect.
 | --- | --- | --- |
 | Firmware | `LedgerHQ/app-zcash` `main` @ `1a0f649` (v3.9.4) | `src/lib.rs` rustdoc |
 | Firmware, still supported | `22dc385` (v3.9.3), `0e048bb` (v3.9.2) | version-gated via `DeviceCaps` |
-| `pczt` | `0.9.3` | `Cargo.toml` — defines the byte stream the firmware parses |
-| `zcash_protocol` | `0.10` | `Cargo.toml` |
-| `orchard` | `0.15` | `Cargo.toml` |
-| `zcash_transparent` | `0.10` | `Cargo.toml` |
-| `zcash_address` | `0.13` | `Cargo.toml` — parses the unified address the device displays |
-| `zcash_encoding` | `0.4` | `Cargo.toml` — writes the `CompactSize` prefixes the device's PCZT parser reads |
-| `secp256k1` | `0.29` | `Cargo.toml` — parses and normalizes the device's DER signatures |
+| `pczt` | `0.10.0-pre.0` | `Cargo.toml` — defines the byte stream the firmware parses |
+| `zcash_protocol` | `0.11.0-pre.0` | `Cargo.toml` |
+| `orchard` | `0.16` | `Cargo.toml` |
+| `zcash_transparent` | `0.11.0-pre.0` | `Cargo.toml` |
+| `zcash_address` | `0.14.0-pre.0` | `Cargo.toml` — parses the unified address the device displays |
+| `zcash_encoding` | `0.5` | `Cargo.toml` — writes the `CompactSize` prefixes the device's PCZT parser reads |
+| `zip32` | `0.3` | `Cargo.toml` |
+| `secp256k1` | `0.33` | `Cargo.toml` — parses and normalizes the device's DER signatures |
 | `blake2b_simd` | `1` | `Cargo.toml` — the personalized hash behind `DeviceIdentity` |
 
 Every requirement is a caret range, `pczt` included. What keeps them from
@@ -141,19 +142,12 @@ requirement would add nothing to the lockfile's hold on this crate's own
 builds, and in a published library it would pin every downstream graph with
 it.
 
-**Temporary:** the table gives each crate's version requirement, but `pczt`,
-`orchard`, `zcash_address` and the librustzcash crates they share are
-currently taken from git rather than from crates.io. The `[patch.crates-io]`
-block at the end of `Cargo.toml` names the revisions — zcash/librustzcash#3041,
-zcash/librustzcash#2199 and zcash/orchard#560, all merged, so each crate comes
-from its own upstream repository at a `main` revision carrying them, until the
-next release of each — and says what each adds and why patching one crate
-patches its workspace siblings. The same block is repeated in
-`ci/nostd/Cargo.toml`, which is its own workspace and so is not reached by the
-crate's. The blocks, this note and the CI step that guards them all go once
-the three changes reach a crates.io release, and the table's requirements move
-with them: none of the current ones can be met by those releases. The block
-says how each moves.
+`pczt` and the librustzcash crates beside it are a pre-release generation that
+pins itself exactly (`pczt` 0.10.0-pre.0 requires `zcash_protocol`
+`=0.11.0-pre.0`, and so on), so those rows move together: a `zcash_protocol`
+or `zcash_transparent` other than the one `pczt` resolves is a second copy
+whose types do not interconvert with it. `cargo tree -d` after a move shows
+whether any of them came in twice.
 
 Firmware documents to cite: `docs/APDU.md` (instruction table, P1/P2 semantics,
 response shapes) and `docs/PCZT_APDU.md` (payload framing) in `app-zcash` at the
@@ -254,7 +248,7 @@ cargo check --all-features
 cargo test --all-features
 
 # The `no_std` build a firmware-side or FFI embedding sees: no transports, no
-# runner, no standard library. `ci/nostd` builds it for a bare-metal target.
+# runner, no standard library. CI builds it for a bare-metal target too.
 cargo build --no-default-features
 
 # `std` without the transports
@@ -423,12 +417,9 @@ brings new lints and a new rustdoc brings new link checks. On both toolchains:
 - `cargo doc --locked --no-deps --document-private-items` under
   `RUSTDOCFLAGS=-D warnings` across the same feature matrix, for intra-doc
   link validation
-- `cargo build --locked --target thumbv7em-none-eabihf` of `ci/nostd`, a
-  `#![no_std]` embedding of the crate without its `std` feature: the proof
-  that the `no_std` half really is. The embedding is its own workspace with
-  its own committed lockfile, `ci/nostd/Cargo.lock`, which may pin nothing
-  the crate's `Cargo.lock` does not (the job checks it, and says how to
-  regenerate it)
+- `cargo build --locked --no-default-features --target thumbv7em-none-eabihf`:
+  the crate without its `std` feature, built for a target with no standard
+  library, which is the proof that the `no_std` half really is
 
 And once, from `ci.yml` itself:
 
