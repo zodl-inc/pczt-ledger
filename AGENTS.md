@@ -70,6 +70,7 @@ include this is grounds for closing the pull request. The contributor is the sol
 responsible author — "the AI generated it" is not a justification during review.
 
 Example:
+
 ```
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
@@ -91,20 +92,20 @@ against the firmware commit this crate pins — before filing.
 
 The crate is a strict layer stack; everything above `transport` performs no I/O.
 
-| Module | Role |
-| --- | --- |
-| `apdu` | Instruction constants, status words, the `Apdu` type, the APDU chunker |
-| `apdu::encode` / `apdu::decode` | One payload builder per wire record; response parsing |
-| `framing` | HID and BLE frame construction and reassembly |
-| `limits` | Device limits, firmware-version capability gating, plan validation |
-| `plan` | PCZT → stream plan, through the `pczt` crate's Verifier role |
-| `shape` | The Updater pass that puts a wallet PCZT into device shape |
-| `pairing` | Firmware probe, viewing-key export, address display, device identity |
-| `session` | `LedgerSignSession`, the sans-I/O pull-pump signing state machine, bound to a paired `DeviceIdentity` it verifies before the first transaction byte |
-| `ceremony` | Drives a session over a `Transport`; deadline and retry policy |
-| `apply` | Device signatures back onto the PCZT (Signer/Updater roles) |
-| `viewing` | Account viewing keys, used to make displayed-output counts exact |
-| `transport` | The blocking `Transport` trait and optional concrete transports |
+| Module                          | Role                                                                                                                                                |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apdu`                          | Instruction constants, status words, the `Apdu` type, the APDU chunker                                                                              |
+| `apdu::encode` / `apdu::decode` | One payload builder per wire record; response parsing                                                                                               |
+| `framing`                       | HID and BLE frame construction and reassembly                                                                                                       |
+| `limits`                        | Device limits, firmware-version capability gating, plan validation                                                                                  |
+| `plan`                          | PCZT → stream plan, through the `pczt` crate's Verifier role                                                                                        |
+| `shape`                         | The Updater pass that puts a wallet PCZT into device shape                                                                                          |
+| `pairing`                       | Firmware probe, viewing-key export, address display, device identity                                                                                |
+| `session`                       | `LedgerSignSession`, the sans-I/O pull-pump signing state machine, bound to a paired `DeviceIdentity` it verifies before the first transaction byte |
+| `ceremony`                      | Drives a session over a `Transport`; deadline and retry policy                                                                                      |
+| `apply`                         | Device signatures back onto the PCZT (Signer/Updater roles)                                                                                         |
+| `viewing`                       | Account viewing keys, used to make displayed-output counts exact                                                                                    |
+| `transport`                     | The blocking `Transport` trait and optional concrete transports                                                                                     |
 
 Dependencies flow **downward**, in this order: `apdu` → `framing` → `limits`
 → `viewing` → `plan` → `shape` → `apply` → `pairing` → `session` → `transport`
@@ -113,55 +114,6 @@ its own `Plan` against `limits`, never the reverse; `transport` takes
 `apdu::Deadline`, which `session` re-exports, and `session` never references
 `transport`). An async or
 FFI embedding drives the pump directly and ignores the `Transport` trait.
-
-## Normative Sources and Pins
-
-Protocol knowledge in this crate is **pinned**, and moving a pin is a
-deliberate, reviewed step — never a side effect.
-
-| Pin | Value | Where |
-| --- | --- | --- |
-| Firmware | `LedgerHQ/app-zcash` `main` @ `1a0f649` (v3.9.4) | `src/lib.rs` rustdoc |
-| Firmware, still supported | `22dc385` (v3.9.3), `0e048bb` (v3.9.2) | version-gated via `DeviceCaps` |
-| `pczt` | `0.10.0-pre.0` | `Cargo.toml` — defines the byte stream the firmware parses |
-| `zcash_protocol` | `0.11.0-pre.0` | `Cargo.toml` |
-| `orchard` | `0.16` | `Cargo.toml` |
-| `zcash_transparent` | `0.11.0-pre.0` | `Cargo.toml` |
-| `zcash_address` | `0.14.0-pre.0` | `Cargo.toml` — parses the unified address the device displays |
-| `zcash_encoding` | `0.5` | `Cargo.toml` — writes the `CompactSize` prefixes the device's PCZT parser reads |
-| `zip32` | `0.3` | `Cargo.toml` |
-| `secp256k1` | `0.33` | `Cargo.toml` — parses and normalizes the device's DER signatures |
-| `blake2b_simd` | `1` | `Cargo.toml` — the personalized hash behind `DeviceIdentity` |
-
-Every requirement is a caret range, `pczt` included. What keeps them from
-moving silently is the committed `Cargo.lock`, which CI builds with `--locked`,
-so any move is a reviewable diff to the lockfile rather than a side effect of
-`cargo update`. That matters most for `pczt`, which defines the byte stream the
-firmware parses and so moves only as a deliberate, tested step; an exact
-requirement would add nothing to the lockfile's hold on this crate's own
-builds, and in a published library it would pin every downstream graph with
-it.
-
-`pczt` and the librustzcash crates beside it are a pre-release generation that
-pins itself exactly (`pczt` 0.10.0-pre.0 requires `zcash_protocol`
-`=0.11.0-pre.0`, and so on), so those rows move together: a `zcash_protocol`
-or `zcash_transparent` other than the one `pczt` resolves is a second copy
-whose types do not interconvert with it. `cargo tree -d` after a move shows
-whether any of them came in twice.
-
-Firmware documents to cite: `docs/APDU.md` (instruction table, P1/P2 semantics,
-response shapes) and `docs/PCZT_APDU.md` (payload framing) in `app-zcash` at the
-pinned commit, plus the implementation itself — `src/consts.rs`, `src/main.rs`,
-`src/parser/pczt/*.rs`, `src/handlers/*.rs`. Where the two documents disagree,
-**the parser wins**; the cases where that matters are recorded in `src/lib.rs`
-under "Known discrepancies in the normative sources".
-
-Transport framing follows `LedgerHQ/device-sdk-ts`,
-`packages/device-management-kit`.
-
-**Moving the firmware pin means re-checking every Known discrepancy** and
-re-reading the bounds in the firmware's `src/consts.rs`. Say so in the commit
-body.
 
 ## Design Constraints (Normative)
 
@@ -281,11 +233,11 @@ cargo deny --all-features --locked check
 
 ## Feature Flags
 
-| Feature | What it does |
-| --- | --- |
-| `std` | The standard library: the `transport` module and the `ceremony` runner. Without it the crate is `#![no_std]` with `alloc` |
-| `transport-hid` | USB HID over `hidapi`. Implies `std` |
-| `transport-speculos` | TCP to the speculos emulator's APDU port (pure `std::net`). Implies `std` |
+| Feature              | What it does                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `std`                | The standard library: the `transport` module and the `ceremony` runner. Without it the crate is `#![no_std]` with `alloc` |
+| `transport-hid`      | USB HID over `hidapi`. Implies `std`                                                                                      |
+| `transport-speculos` | TCP to the speculos emulator's APDU port (pure `std::net`). Implies `std`                                                 |
 
 `std` is **on by default**; the transports are off. An FFI or firmware-side
 build takes `default-features = false`. The crate must build, lint and test
