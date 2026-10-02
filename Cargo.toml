@@ -1,6 +1,6 @@
 [package]
 name = "pczt_ledger"
-version = "0.1.0"
+version = "0.1.0-pre.0"
 authors = [
     "Kris Nuttycombe <kris@electriccoin.co>",
     "John Boyd <john@coldnoise.net>",
@@ -11,8 +11,6 @@ rust-version = "1.88"
 # `rust-version` this crate's MSRV meets, so a lockfile refresh cannot quietly
 # raise the MSRV.
 resolver = "3"
-# Remove when the crate is ready for its first crates.io release.
-publish = false
 description = "Transport-agnostic APDU engine for signing Zcash PCZTs with Ledger hardware wallets"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/zodl-inc/pczt-ledger"

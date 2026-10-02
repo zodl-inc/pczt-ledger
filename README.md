@@ -69,7 +69,8 @@ The wallet owns transaction construction, proving, and broadcast.
 
 API documentation — including the normative firmware pin, the known
 discrepancies in the firmware's own documents, and the wire-contract notes — is
-in the crate rustdoc. Until the first crates.io release it is built locally:
+in the crate rustdoc, published on [docs.rs](https://docs.rs/pczt_ledger). To
+build it locally:
 
 ```sh
 cargo doc --no-deps --all-features --open

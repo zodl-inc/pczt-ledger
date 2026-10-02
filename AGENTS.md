@@ -385,10 +385,6 @@ artifacts of a development session, not repository history. Never commit them.
 
 ## Changelog & Commit Discipline
 
-- Until the first crates.io release, `CHANGELOG.md` says only "Initial
-  release": the rustdoc of the released version is what describes the crate,
-  and an inventory of its items would only restate it. The rules below apply
-  from the first release on.
 - Update `CHANGELOG.md` for any public API change, bug fix, or semantic change.
   The CHANGELOG entry MUST be part of the commit that makes the API change —
   never a separate CHANGELOG-only commit. Entries provide only the information
